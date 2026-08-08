@@ -1,0 +1,22 @@
+{
+  "id": "pr_009",
+  "description": "Path traversal vulnerability via unsanitized file path from user input",
+  "tags": ["security", "path_traversal"],
+  "diff": "diff --git a/api/files.py b/api/files.py\nindex 0000000..1111111 100644\n--- a/api/files.py\n+++ b/api/files.py\n@@ -0,0 +1,16 @@\n+import os\n+\n+BASE_DIR = \"/app/uploads\"\n+\n+def read_file(filename):\n+    # VULNERABLE: no path sanitization\n+    path = os.path.join(BASE_DIR, filename)\n+    with open(path) as f:\n+        return f.read()\n+\n+def delete_file(filename):\n+    # VULNERABLE: attacker can pass ../../etc/passwd\n+    path = BASE_DIR + \"/\" + filename\n+    os.remove(path)\n",
+  "expected_findings": [
+    {
+      "category": "security_flaw",
+      "severity": "high",
+      "file_path": "api/files.py",
+      "line_start": 7,
+      "description_keywords": ["path traversal", "sanitize", "directory", "../"]
+    },
+    {
+      "category": "security_flaw",
+      "severity": "high",
+      "file_path": "api/files.py",
+      "line_start": 13,
+      "description_keywords": ["path traversal", "sanitize", "directory"]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "pr_005",
+  "description": "Public functions with no docstrings or type annotations",
+  "tags": ["documentation", "quality"],
+  "diff": "diff --git a/core/processor.py b/core/processor.py\nindex 0000000..1111111 100644\n--- a/core/processor.py\n+++ b/core/processor.py\n@@ -0,0 +1,22 @@\n+class DataProcessor:\n+    def __init__(self, config):\n+        self.config = config\n+        self._cache = {}\n+\n+    def process(self, data, mode):\n+        if mode == \"fast\":\n+            return self._fast_process(data)\n+        return self._slow_process(data)\n+\n+    def _fast_process(self, data):\n+        result = []\n+        for item in data:\n+            result.append(item * 2)\n+        return result\n+\n+    def _slow_process(self, data):\n+        import time\n+        time.sleep(0.1)\n+        return [item for item in data if item > 0]\n+\n+    def clear_cache(self):\n+        self._cache = {}\n",
+  "expected_findings": [
+    {
+      "category": "missing_docs",
+      "severity": "low",
+      "file_path": "core/processor.py",
+      "line_start": 6,
+      "description_keywords": ["docstring", "documentation", "public", "type"]
+    }
+  ]
+}

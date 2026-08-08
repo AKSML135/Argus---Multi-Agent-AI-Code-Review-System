@@ -1,0 +1,22 @@
+{
+  "id": "pr_011",
+  "description": "Hardcoded production credentials mistakenly committed in test setup",
+  "tags": ["security", "secret"],
+  "diff": "diff --git a/tests/conftest.py b/tests/conftest.py\nindex 0000000..1111111 100644\n--- a/tests/conftest.py\n+++ b/tests/conftest.py\n@@ -0,0 +1,14 @@\n+import pytest\n+\n+# Production DB credentials — DO NOT COMMIT\n+DB_HOST = \"prod-db.internal\"\n+DB_USER = \"admin\"\n+DB_PASSWORD = \"Sup3rS3cr3tPa$$word!\"\n+STRIPE_KEY = \"sk_live_abcdefghijklmnopqrstuvwx\"\n+\n+@pytest.fixture\n+def db_conn():\n+    import psycopg2\n+    return psycopg2.connect(\n+        host=DB_HOST, user=DB_USER, password=DB_PASSWORD\n+    )\n",
+  "expected_findings": [
+    {
+      "category": "leaked_secret",
+      "severity": "critical",
+      "file_path": "tests/conftest.py",
+      "line_start": 6,
+      "description_keywords": ["password", "hardcoded", "secret", "credential"]
+    },
+    {
+      "category": "leaked_secret",
+      "severity": "critical",
+      "file_path": "tests/conftest.py",
+      "line_start": 7,
+      "description_keywords": ["stripe", "key", "live", "secret"]
+    }
+  ]
+}

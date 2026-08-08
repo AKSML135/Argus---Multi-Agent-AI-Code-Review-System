@@ -1,0 +1,15 @@
+{
+  "id": "pr_008",
+  "description": "Function with high cyclomatic complexity (deep nesting, many branches)",
+  "tags": ["quality"],
+  "diff": "diff --git a/engine/rules.py b/engine/rules.py\nindex 0000000..1111111 100644\n--- a/engine/rules.py\n+++ b/engine/rules.py\n@@ -0,0 +1,45 @@\n+def evaluate_rule(user, resource, action, context):\n+    if user is None:\n+        return False\n+    if not user.get(\"active\"):\n+        return False\n+    if resource is None:\n+        return False\n+    if action not in (\"read\", \"write\", \"delete\", \"admin\"):\n+        return False\n+    if action == \"admin\":\n+        if user.get(\"role\") != \"admin\":\n+            return False\n+        if not context.get(\"mfa_verified\"):\n+            return False\n+        if context.get(\"ip_blocked\"):\n+            return False\n+        if resource.get(\"type\") == \"sensitive\":\n+            if not user.get(\"clearance\"):\n+                return False\n+            if user.get(\"clearance\") < 3:\n+                return False\n+        return True\n+    if action == \"delete\":\n+        if resource.get(\"protected\"):\n+            return False\n+        if user.get(\"role\") not in (\"admin\", \"editor\"):\n+            return False\n+        if resource.get(\"owner\") != user.get(\"id\"):\n+            if not user.get(\"can_delete_others\"):\n+                return False\n+        return True\n+    if action == \"write\":\n+        if resource.get(\"locked\"):\n+            return False\n+        if user.get(\"read_only\"):\n+            return False\n+        return True\n+    if action == \"read\":\n+        if resource.get(\"private\"):\n+            if user.get(\"role\") not in (\"admin\", \"editor\", \"viewer\"):\n+                return False\n+        return True\n+    return False\n",
+  "expected_findings": [
+    {
+      "category": "quality",
+      "severity": "medium",
+      "file_path": "engine/rules.py",
+      "line_start": 1,
+      "description_keywords": ["complexity", "cyclomatic", "refactor", "branches"]
+    }
+  ]
+}

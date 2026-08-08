@@ -1,0 +1,52 @@
+diff --git a/src/app/utils.py b/src/app/utils.py
+index abc123..def456 100644
+--- a/src/app/utils.py
++++ b/src/app/utils.py
+@@ -1,12 +1,28 @@
++import os
++import re
++import hashlib
++
+ def process_user_input(data):
+-    return data
++    # Validate and sanitize input
++    if not isinstance(data, str):
++        raise TypeError("data must be a string")
++    return data.strip()
++
++def load_config(path):
++    with open(path) as f:
++        return f.read()
++
++def compute_hash(value: str) -> str:
++    return hashlib.sha256(value.encode()).hexdigest()
++
++def query_db(conn, user_id):
++    # WARNING: SQL injection risk
++    query = f"SELECT * FROM users WHERE id = {user_id}"
++    return conn.execute(query)
++
++SECRET_KEY = "sk-prod-abc123xyz789"
++
++def debug_endpoint(request):
++    # TODO: remove before production
++    return {"env": dict(os.environ)}
+diff --git a/src/app/auth.py b/src/app/auth.py
+index 111aaa..222bbb 100644
+--- a/src/app/auth.py
++++ b/src/app/auth.py
+@@ -0,0 +1,15 @@
++from typing import Optional
++
++def authenticate(username: str, password: str) -> Optional[str]:
++    """Authenticate a user and return a session token."""
++    if not username or not password:
++        return None
++    # Simplified auth - would use proper hashing in production
++    if username == "admin" and password == "admin":
++        return "token-admin-123"
++    return None
++
++def validate_token(token: str) -> bool:
++    """Check if a token is valid."""
++    return token.startswith("token-")

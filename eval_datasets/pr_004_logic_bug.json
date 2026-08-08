@@ -1,0 +1,22 @@
+{
+  "id": "pr_004",
+  "description": "Off-by-one error in pagination logic and incorrect loop boundary",
+  "tags": ["logic"],
+  "diff": "diff --git a/api/pagination.py b/api/pagination.py\nindex 0000000..1111111 100644\n--- a/api/pagination.py\n+++ b/api/pagination.py\n@@ -0,0 +1,20 @@\n+def paginate(items, page, page_size):\n+    \"\"\"Return a page of items.\"\"\"\n+    start = page * page_size\n+    end = start + page_size\n+    return items[start:end]\n+\n+def get_last_page(total_items, page_size):\n+    \"\"\"Return zero-based index of the last page.\"\"\"\n+    # BUG: should be (total_items - 1) // page_size\n+    return total_items // page_size\n+\n+def find_first_above_threshold(values, threshold):\n+    \"\"\"Return first value above threshold.\"\"\"\n+    for i in range(len(values) - 1):  # BUG: misses last element\n+        if values[i] > threshold:\n+            return values[i]\n+    return None\n",
+  "expected_findings": [
+    {
+      "category": "logic_bug",
+      "severity": "medium",
+      "file_path": "api/pagination.py",
+      "line_start": 9,
+      "description_keywords": ["off-by-one", "last page", "boundary", "incorrect"]
+    },
+    {
+      "category": "logic_bug",
+      "severity": "medium",
+      "file_path": "api/pagination.py",
+      "line_start": 14,
+      "description_keywords": ["range", "last element", "off-by-one", "misses"]
+    }
+  ]
+}

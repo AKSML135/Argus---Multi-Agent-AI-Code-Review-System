@@ -1,0 +1,15 @@
+{
+  "id": "pr_013",
+  "description": "AWS access key accidentally committed in deployment script",
+  "tags": ["security", "secret", "aws"],
+  "diff": "diff --git a/deploy/push.sh b/deploy/push.sh\nindex 0000000..1111111 100644\n--- a/deploy/push.sh\n+++ b/deploy/push.sh\n@@ -0,0 +1,10 @@\n+#!/bin/bash\n+# Deployment script\n+\n+export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\n+export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n+export AWS_DEFAULT_REGION=us-east-1\n+\n+aws s3 sync ./dist s3://my-bucket/releases/\n+aws cloudfront create-invalidation --distribution-id ABCDEFGHIJKLMN --paths '/*'\n",
+  "expected_findings": [
+    {
+      "category": "leaked_secret",
+      "severity": "critical",
+      "file_path": "deploy/push.sh",
+      "line_start": 4,
+      "description_keywords": ["aws", "access key", "secret"]
+    }
+  ]
+}

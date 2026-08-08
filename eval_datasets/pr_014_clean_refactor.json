@@ -1,0 +1,7 @@
+{
+  "id": "pr_014",
+  "description": "Clean refactor extracting a well-typed helper function",
+  "tags": ["clean"],
+  "diff": "diff --git a/utils/strings.py b/utils/strings.py\nindex 0000000..1111111 100644\n--- a/utils/strings.py\n+++ b/utils/strings.py\n@@ -1,8 +1,22 @@\n+\"\"\"String utility functions.\"\"\"\n+\n+from __future__ import annotations\n+\n+\n+def slugify(text: str) -> str:\n+    \"\"\"Convert text to a URL-safe slug.\n+\n+    >>> slugify('Hello World!')\n+    'hello-world'\n+    \"\"\"\n+    import re\n+    text = text.lower().strip()\n+    text = re.sub(r'[^\\w\\s-]', '', text)\n+    text = re.sub(r'[-\\s]+', '-', text)\n+    return text\n+\n def noop():\n     pass\n",
+  "expected_findings": []
+}

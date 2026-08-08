@@ -1,0 +1,15 @@
+{
+  "id": "pr_012",
+  "description": "Network calls and file I/O with no error handling",
+  "tags": ["quality", "logic"],
+  "diff": "diff --git a/client/fetcher.py b/client/fetcher.py\nindex 0000000..1111111 100644\n--- a/client/fetcher.py\n+++ b/client/fetcher.py\n@@ -0,0 +1,18 @@\n+import urllib.request\n+import json\n+\n+def fetch_data(url):\n+    response = urllib.request.urlopen(url)\n+    return json.loads(response.read())\n+\n+def load_config(path):\n+    with open(path) as f:\n+        return json.load(f)\n+\n+def save_result(path, data):\n+    with open(path, \"w\") as f:\n+        json.dump(data, f)\n",
+  "expected_findings": [
+    {
+      "category": "quality",
+      "severity": "medium",
+      "file_path": "client/fetcher.py",
+      "line_start": 4,
+      "description_keywords": ["error handling", "exception", "try", "network"]
+    }
+  ]
+}

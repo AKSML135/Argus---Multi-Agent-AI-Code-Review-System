@@ -1,0 +1,22 @@
+{
+  "id": "pr_006",
+  "description": "Shell command injection via unsanitized user input to os.system",
+  "tags": ["security", "command_injection"],
+  "diff": "diff --git a/tools/runner.py b/tools/runner.py\nindex 0000000..1111111 100644\n--- a/tools/runner.py\n+++ b/tools/runner.py\n@@ -0,0 +1,14 @@\n+import os\n+import subprocess\n+\n+def run_tool(tool_name, user_args):\n+    # Dangerous: user input passed directly to shell\n+    os.system(f\"run-{tool_name} {user_args}\")\n+\n+def generate_report(filename, template):\n+    # Also dangerous: shell=True with user input\n+    cmd = f\"pandoc {filename} -t {template} -o output.pdf\"\n+    subprocess.run(cmd, shell=True)\n+\n+def safe_runner(args: list[str]) -> int:\n+    result = subprocess.run([\"safe-tool\"] + args, capture_output=True)\n+    return result.returncode\n",
+  "expected_findings": [
+    {
+      "category": "security_flaw",
+      "severity": "critical",
+      "file_path": "tools/runner.py",
+      "line_start": 6,
+      "description_keywords": ["injection", "os.system", "shell", "unsanitized"]
+    },
+    {
+      "category": "security_flaw",
+      "severity": "high",
+      "file_path": "tools/runner.py",
+      "line_start": 11,
+      "description_keywords": ["shell=True", "injection", "subprocess"]
+    }
+  ]
+}

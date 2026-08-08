@@ -1,0 +1,7 @@
+{
+  "id": "pr_003",
+  "description": "Clean PR — well-typed utility function with no vulnerabilities",
+  "tags": ["clean"],
+  "diff": "diff --git a/utils/math_utils.py b/utils/math_utils.py\nindex 0000000..1111111 100644\n--- a/utils/math_utils.py\n+++ b/utils/math_utils.py\n@@ -0,0 +1,18 @@\n+\"\"\"Mathematical utility functions.\"\"\"\n+\n+from __future__ import annotations\n+\n+\n+def clamp(value: float, minimum: float, maximum: float) -> float:\n+    \"\"\"Return value clamped to [minimum, maximum].\"\"\"\n+    if minimum > maximum:\n+        raise ValueError(f\"minimum ({minimum}) must be <= maximum ({maximum})\")\n+    return max(minimum, min(maximum, value))\n+\n+\n+def safe_divide(numerator: float, denominator: float) -> float:\n+    \"\"\"Divide numerator by denominator; raise ZeroDivisionError if denominator is zero.\"\"\"\n+    if denominator == 0.0:\n+        raise ZeroDivisionError(\"denominator cannot be zero\")\n+    return numerator / denominator\n",
+  "expected_findings": []
+}

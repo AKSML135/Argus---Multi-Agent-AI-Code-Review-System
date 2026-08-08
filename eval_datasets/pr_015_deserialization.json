@@ -1,0 +1,15 @@
+{
+  "id": "pr_015",
+  "description": "Unsafe deserialization using pickle from untrusted input",
+  "tags": ["security", "deserialization"],
+  "diff": "diff --git a/api/session.py b/api/session.py\nindex 0000000..1111111 100644\n--- a/api/session.py\n+++ b/api/session.py\n@@ -0,0 +1,18 @@\n+import pickle\n+import base64\n+\n+def load_session(cookie_value: str):\n+    \"\"\"Load session from cookie — WARNING: uses pickle.\"\"\"\n+    try:\n+        data = base64.b64decode(cookie_value)\n+        return pickle.loads(data)  # UNSAFE: arbitrary code execution risk\n+    except Exception:\n+        return {}\n+\n+def save_session(session_data: dict) -> str:\n+    \"\"\"Serialize session to cookie string.\"\"\"\n+    return base64.b64encode(pickle.dumps(session_data)).decode()\n",
+  "expected_findings": [
+    {
+      "category": "security_flaw",
+      "severity": "critical",
+      "file_path": "api/session.py",
+      "line_start": 8,
+      "description_keywords": ["pickle", "deserialization", "arbitrary", "code execution"]
+    }
+  ]
+}

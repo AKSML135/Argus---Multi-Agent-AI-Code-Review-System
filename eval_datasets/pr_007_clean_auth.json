@@ -1,0 +1,7 @@
+{
+  "id": "pr_007",
+  "description": "Clean authentication module with proper hashing and parameterized queries",
+  "tags": ["clean", "security"],
+  "diff": "diff --git a/auth/users.py b/auth/users.py\nindex 0000000..1111111 100644\n--- a/auth/users.py\n+++ b/auth/users.py\n@@ -0,0 +1,28 @@\n+\"\"\"User authentication module.\"\"\"\n+\n+from __future__ import annotations\n+\n+import hashlib\n+import os\n+from typing import Optional\n+\n+\n+def hash_password(password: str) -> str:\n+    \"\"\"Hash a password using SHA-256 with a random salt.\"\"\"\n+    salt = os.urandom(32).hex()\n+    hashed = hashlib.sha256((salt + password).encode()).hexdigest()\n+    return f\"{salt}:{hashed}\"\n+\n+\n+def verify_password(password: str, stored_hash: str) -> bool:\n+    \"\"\"Verify a password against its stored hash.\"\"\"\n+    salt, expected = stored_hash.split(\":\", 1)\n+    actual = hashlib.sha256((salt + password).encode()).hexdigest()\n+    return actual == expected\n+\n+\n+def get_user_by_id(conn, user_id: int) -> Optional[dict]:\n+    \"\"\"Fetch a user row by ID using a parameterized query.\"\"\"\n+    row = conn.execute(\"SELECT * FROM users WHERE id = ?\", (user_id,)).fetchone()\n+    return dict(row) if row else None\n",
+  "expected_findings": []
+}

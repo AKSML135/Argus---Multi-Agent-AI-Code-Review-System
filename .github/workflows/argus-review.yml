@@ -1,0 +1,221 @@
+# .github/workflows/argus-review.yml
+#
+# Argus AI Code Review — Reference CI Workflow (M13)
+#
+# Triggers:
+#   - pull_request: automatic review on every PR diff
+#   - issue_comment: human can /argus approve or /argus reject
+#
+# Required repository secrets:
+#   ARGUS_API_KEY   — API key for the running Argus service
+#   ARGUS_API_URL   — Base URL of the deployed Argus server (e.g. https://argus.example.com)
+#   GROQ_API_KEY    — (optional) only needed if running agents in-process
+#
+# Non-interactive HITL: The workflow posts the review and polls until a human
+# comments "/argus approve" (or the timeout fires and blocks the merge).
+
+name: Argus AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1 — Run review on every PR push
+  # ---------------------------------------------------------------------------
+  review:
+    name: AI Code Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history needed for git diff
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Argus
+        run: pip install argus
+
+      - name: Generate diff
+        id: diff
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > pr.patch
+          echo "lines=$(wc -l < pr.patch)" >> "$GITHUB_OUTPUT"
+
+      - name: Run Argus review (--no-wait, fast mode)
+        id: argus
+        env:
+          ARGUS_API_KEY: ${{ secrets.ARGUS_API_KEY }}
+          ARGUS_API_URL: ${{ secrets.ARGUS_API_URL || 'http://localhost:8000' }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          # Run review; capture exit code; never fail the step so we can post comment
+          argus review \
+            --diff pr.patch \
+            --no-wait \
+            --fail-on critical \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --json \
+          > argus_output.json 2>&1 || ARGUS_EXIT=$?
+
+          echo "exit_code=${ARGUS_EXIT:-0}" >> "$GITHUB_OUTPUT"
+          cat argus_output.json
+
+      - name: Post review comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '## 🔍 Argus AI Code Review\n\n';
+
+            try {
+              const raw = fs.readFileSync('argus_output.json', 'utf8');
+              const data = JSON.parse(raw);
+              const count = data.finding_count ?? 0;
+              const maxSev = data.max_severity ?? 'none';
+              body += `**Findings:** ${count}  |  **Max severity:** \`${maxSev}\`\n\n`;
+              if (data.report) {
+                body += data.report.slice(0, 4000);
+              } else {
+                body += '_No report generated._';
+              }
+            } catch (e) {
+              body += `_Could not parse Argus output: ${e.message}_`;
+            }
+
+            body += '\n\n---\n_To approve: comment `/argus approve` · To reject: `/argus reject`_';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      - name: Fail if critical findings
+        if: steps.argus.outputs.exit_code != '0'
+        run: |
+          echo "::error::Argus found critical-severity findings. Review the PR comment and address issues or approve via /argus approve."
+          exit 1
+
+  # ---------------------------------------------------------------------------
+  # Job 2 — Wait for HITL approval (blocks merge)
+  # ---------------------------------------------------------------------------
+  await-approval:
+    name: Wait for Human Approval
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: review
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Argus
+        run: pip install argus
+
+      - name: Poll for approval
+        env:
+          ARGUS_API_KEY: ${{ secrets.ARGUS_API_KEY }}
+          ARGUS_API_URL: ${{ secrets.ARGUS_API_URL || 'http://localhost:8000' }}
+        run: |
+          # --wait-for-approval polls GET /reviews/{id} until not awaiting_human.
+          # Exit 3 on timeout → blocks the merge (fail-safe default).
+          argus review \
+            --diff /dev/null \
+            --wait-for-approval \
+            --timeout 3600 \
+            --poll-interval 30 \
+            --api-url "$ARGUS_API_URL" \
+            --api-key "$ARGUS_API_KEY"
+
+  # ---------------------------------------------------------------------------
+  # Job 3 — Handle /argus approve and /argus reject PR comments
+  # ---------------------------------------------------------------------------
+  handle-comment:
+    name: Handle /argus command
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, '/argus')
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Argus
+        run: pip install argus
+
+      - name: Parse comment command
+        id: parse
+        run: |
+          COMMENT="${{ github.event.comment.body }}"
+          RESULT=$(argus parse-comment "$COMMENT")
+          CMD=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('command') or '')")
+          echo "command=$CMD" >> "$GITHUB_OUTPUT"
+
+      - name: Approve review via API
+        if: steps.parse.outputs.command == 'approve'
+        env:
+          ARGUS_API_KEY: ${{ secrets.ARGUS_API_KEY }}
+          ARGUS_API_URL: ${{ secrets.ARGUS_API_URL || 'http://localhost:8000' }}
+        run: |
+          # POST /reviews/{id}/approve with action=approve
+          # The review_id is stored as a label or comment on the PR in a real deployment.
+          # Here we read it from the most recent Argus comment (simplified example).
+          echo "Approving via API for PR #${{ github.event.issue.number }}"
+          curl -s -X POST \
+            "${ARGUS_API_URL}/reviews/REVIEW_ID_PLACEHOLDER/approve" \
+            -H "x-api-key: ${ARGUS_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"gate":"final_approval","action":"approve","comment":"Approved via /argus approve in PR comment"}'
+
+      - name: Reject review via API
+        if: steps.parse.outputs.command == 'reject'
+        env:
+          ARGUS_API_KEY: ${{ secrets.ARGUS_API_KEY }}
+          ARGUS_API_URL: ${{ secrets.ARGUS_API_URL || 'http://localhost:8000' }}
+        run: |
+          echo "Rejecting via API for PR #${{ github.event.issue.number }}"
+          curl -s -X POST \
+            "${ARGUS_API_URL}/reviews/REVIEW_ID_PLACEHOLDER/approve" \
+            -H "x-api-key: ${ARGUS_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"gate":"final_approval","action":"reject","comment":"Rejected via /argus reject in PR comment"}'
+
+      - name: React to comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const cmd = '${{ steps.parse.outputs.command }}';
+            const reaction = cmd === 'approve' ? '+1' : cmd === 'reject' ? '-1' : 'confused';
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: reaction,
+            });

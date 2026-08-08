@@ -1,0 +1,7 @@
+{
+  "id": "pr_010",
+  "description": "Clean data transformation pipeline with proper typing and documentation",
+  "tags": ["clean"],
+  "diff": "diff --git a/pipeline/transform.py b/pipeline/transform.py\nindex 0000000..1111111 100644\n--- a/pipeline/transform.py\n+++ b/pipeline/transform.py\n@@ -0,0 +1,30 @@\n+\"\"\"Data transformation pipeline.\"\"\"\n+\n+from __future__ import annotations\n+\n+from dataclasses import dataclass\n+from typing import Iterable\n+\n+\n+@dataclass\n+class Record:\n+    \"\"\"A single data record.\"\"\"\n+\n+    key: str\n+    value: float\n+    tags: list[str]\n+\n+\n+def normalize(records: Iterable[Record], scale: float = 1.0) -> list[Record]:\n+    \"\"\"Scale all record values by `scale`.\"\"\"\n+    return [\n+        Record(key=r.key, value=r.value * scale, tags=r.tags)\n+        for r in records\n+    ]\n+\n+\n+def filter_by_tag(records: Iterable[Record], tag: str) -> list[Record]:\n+    \"\"\"Return only records that include the given tag.\"\"\"\n+    return [r for r in records if tag in r.tags]\n",
+  "expected_findings": []
+}

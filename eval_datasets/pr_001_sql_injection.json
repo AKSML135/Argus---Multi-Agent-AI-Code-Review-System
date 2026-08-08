@@ -1,0 +1,22 @@
+{
+  "id": "pr_001",
+  "description": "SQL injection via f-string query construction",
+  "tags": ["security", "sql_injection"],
+  "diff": "diff --git a/app/db.py b/app/db.py\nindex 0000000..1111111 100644\n--- a/app/db.py\n+++ b/app/db.py\n@@ -1,5 +1,12 @@\n+import sqlite3\n+\n+def get_user(conn, username):\n+    query = f\"SELECT * FROM users WHERE username = '{username}'\"\n+    return conn.execute(query).fetchone()\n+\n+def delete_user(conn, user_id):\n+    conn.execute(f\"DELETE FROM users WHERE id = {user_id}\")\n+    conn.commit()\n+\n def noop():\n     pass\n",
+  "expected_findings": [
+    {
+      "category": "security_flaw",
+      "severity": "critical",
+      "file_path": "app/db.py",
+      "line_start": 4,
+      "description_keywords": ["sql injection", "parameterized", "f-string"]
+    },
+    {
+      "category": "security_flaw",
+      "severity": "critical",
+      "file_path": "app/db.py",
+      "line_start": 8,
+      "description_keywords": ["sql injection", "parameterized", "f-string"]
+    }
+  ]
+}
