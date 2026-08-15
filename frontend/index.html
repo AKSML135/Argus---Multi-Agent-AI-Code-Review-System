@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Argus — Code Review Console</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<style>
+:root{
+  --bg:#0A0C10;
+  --panel:#12151C;
+  --panel-2:#161A23;
+  --border:#232733;
+  --border-soft:#1A1E28;
+  --text:#E7E9EE;
+  --muted:#8A90A0;
+  --muted-2:#5B6172;
+  --accent:#E8B339;
+  --accent-dim:#7A6222;
+  --crit:#F0555A;
+  --high:#F97A3D;
+  --med:#EAC13A;
+  --low:#4FA6E8;
+  --info:#6B7280;
+  --ok:#3FCB8E;
+  --err:#F0555A;
+  --mono: 'SFMono-Regular', 'JetBrains Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --radius: 8px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:
+    radial-gradient(circle at 15% -10%, rgba(232,179,57,0.05), transparent 40%),
+    radial-gradient(circle at 85% 0%, rgba(79,166,232,0.04), transparent 35%),
+    var(--bg);
+  color:var(--text);
+  font-family:var(--sans);
+  font-size:14px;
+  line-height:1.5;
+  min-height:100vh;
+}
+a{color:var(--low);}
+code, .mono{font-family:var(--mono);}
+
+/* ---------- topbar ---------- */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:16px; flex-wrap:wrap;
+  padding:16px 24px;
+  border-bottom:1px solid var(--border-soft);
+  background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+  position:sticky; top:0; z-index:50;
+  backdrop-filter:blur(8px);
+}
+.brand{display:flex; align-items:center; gap:12px;}
+.brand svg{flex:none;}
+.brand-text h1{
+  font-size:19px; margin:0; letter-spacing:0.06em; font-weight:700;
+  text-transform:uppercase;
+}
+.brand-text .tagline{
+  display:block; font-size:11px; color:var(--muted-2); letter-spacing:0.03em; margin-top:1px;
+}
+.config-bar{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+.config-field{display:flex; flex-direction:column; gap:2px;}
+.config-field label{font-size:10px; color:var(--muted-2); text-transform:uppercase; letter-spacing:0.06em;}
+.config-field input{
+  background:var(--panel-2); border:1px solid var(--border); color:var(--text);
+  padding:6px 9px; border-radius:6px; font-size:12px; font-family:var(--mono);
+  width:200px;
+}
+.config-field input:focus{outline:1px solid var(--accent); border-color:var(--accent);}
+.health-pill{
+  display:flex; align-items:center; gap:6px;
+  padding:6px 10px; border:1px solid var(--border); border-radius:20px;
+  font-size:11px; color:var(--muted); background:var(--panel-2);
+}
+.dot{width:8px; height:8px; border-radius:50%; background:var(--muted-2); flex:none;}
+.dot.ok{background:var(--ok); box-shadow:0 0 8px var(--ok);}
+.dot.bad{background:var(--err); box-shadow:0 0 8px var(--err);}
+.dot.checking{background:var(--accent); animation:pulse 1s infinite;}
+
+/* ---------- layout ---------- */
+.layout{
+  max-width:1240px; margin:0 auto; padding:24px; display:grid;
+  grid-template-columns: 1fr 1fr; gap:20px;
+}
+.layout .span2{grid-column:1 / -1;}
+@media (max-width: 880px){
+  .layout{grid-template-columns:1fr; padding:16px;}
+}
+
+.panel{
+  background:var(--panel); border:1px solid var(--border-soft);
+  border-radius:var(--radius); padding:20px;
+}
+.panel h2{
+  margin:0 0 14px 0; font-size:12px; text-transform:uppercase; letter-spacing:0.09em;
+  color:var(--muted); font-weight:700; display:flex; align-items:center; gap:8px;
+}
+.panel h2 .count-chip{
+  background:var(--panel-2); border:1px solid var(--border); color:var(--muted);
+  border-radius:20px; padding:1px 8px; font-size:10px; font-family:var(--mono);
+}
+
+/* ---------- form fields ---------- */
+.field-row{display:flex; gap:10px; margin-bottom:10px;}
+.field{flex:1; display:flex; flex-direction:column; gap:4px;}
+.field label{font-size:11px; color:var(--muted-2); text-transform:uppercase; letter-spacing:0.05em;}
+.field input, .field textarea, .field select{
+  background:var(--panel-2); border:1px solid var(--border); color:var(--text);
+  padding:8px 10px; border-radius:6px; font-size:13px; font-family:var(--sans);
+  resize:vertical;
+}
+.field textarea{font-family:var(--mono); font-size:12px; min-height:160px; line-height:1.5;}
+.field input:focus, .field textarea:focus, .field select:focus{outline:1px solid var(--accent); border-color:var(--accent);}
+
+.fixture-row{display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;}
+.btn{
+  border:1px solid var(--border); background:var(--panel-2); color:var(--text);
+  padding:7px 13px; border-radius:6px; font-size:12px; cursor:pointer;
+  font-family:var(--sans); font-weight:600; transition:border-color .15s, background .15s;
+  display:inline-flex; align-items:center; gap:6px;
+}
+.btn:hover{border-color:var(--muted-2);}
+.btn:disabled{opacity:0.45; cursor:not-allowed;}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:#1B1503;}
+.btn.primary:hover{background:#f0c15c;}
+.btn.ghost{background:transparent;}
+.btn.small{padding:4px 10px; font-size:11px;}
+.btn.danger{border-color:var(--err); color:var(--err); background:transparent;}
+.btn.danger:hover{background:rgba(240,85,90,0.08);}
+
+.error-slot{color:var(--err); font-size:12px; margin-top:6px; min-height:16px;}
+.hint{color:var(--muted-2); font-size:11px; margin-top:4px; line-height:1.5;}
+
+/* ---------- tracker / recent chips ---------- */
+.attach-row{display:flex; gap:8px;}
+.attach-row input{flex:1;}
+.recent-list{display:flex; flex-direction:column; gap:6px; margin-top:14px;}
+.recent-chip{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  background:var(--panel-2); border:1px solid var(--border); border-radius:6px;
+  padding:8px 10px; cursor:pointer; font-size:12px;
+}
+.recent-chip:hover{border-color:var(--muted-2);}
+.recent-chip.active{border-color:var(--accent);}
+.recent-chip .rid{font-family:var(--mono); color:var(--text);}
+.recent-chip .rstatus{font-size:10px; text-transform:uppercase; letter-spacing:0.04em;}
+
+/* ---------- status badges ---------- */
+.badge{
+  display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:20px;
+  font-size:10px; text-transform:uppercase; letter-spacing:0.05em; font-weight:700;
+  border:1px solid transparent;
+}
+.badge.pending{color:var(--muted); background:rgba(138,144,160,0.12); border-color:rgba(138,144,160,0.3);}
+.badge.running{color:var(--accent); background:rgba(232,179,57,0.12); border-color:rgba(232,179,57,0.35);}
+.badge.awaiting_human{color:var(--low); background:rgba(79,166,232,0.12); border-color:rgba(79,166,232,0.35);}
+.badge.published{color:var(--ok); background:rgba(63,203,142,0.12); border-color:rgba(63,203,142,0.35);}
+.badge.failed{color:var(--err); background:rgba(240,85,90,0.12); border-color:rgba(240,85,90,0.35);}
+.badge.unknown{color:var(--muted-2); background:rgba(138,144,160,0.08);}
+
+/* ---------- pipeline ---------- */
+.pipeline-panel{padding-bottom:6px;}
+.pipeline-topline{display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:18px;}
+.pipeline-topline .rid-block{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+.pipeline-topline .rid-block .rid{font-family:var(--mono); font-size:13px; color:var(--text);}
+.stream-state{font-size:10px; color:var(--muted-2); display:flex; align-items:center; gap:5px; text-transform:uppercase; letter-spacing:0.05em;}
+
+.pipeline-track{
+  display:flex; align-items:flex-start; gap:0; overflow-x:auto; padding:8px 2px 18px 2px;
+}
+.node-wrap{display:flex; align-items:center;}
+.connector{width:22px; height:2px; background:var(--border); margin-top:23px; flex:none;}
+.connector.lit{background:var(--accent);}
+.agent-node{
+  display:flex; flex-direction:column; align-items:center; gap:7px; cursor:pointer;
+  width:88px; flex:none; padding:4px; border-radius:8px;
+}
+.agent-node:hover{background:rgba(255,255,255,0.03);}
+.agent-node.selected{background:rgba(232,179,57,0.06); outline:1px solid var(--accent-dim);}
+.eye{width:34px; height:34px;}
+.eye .lid{fill:none; stroke:var(--border); stroke-width:2;}
+.eye .iris{fill:var(--muted-2); transition:fill .2s;}
+.eye .pupil{fill:var(--bg);}
+.agent-node[data-status="idle"] .iris{fill:#2A2E3A;}
+.agent-node[data-status="running"] .eye .lid{stroke:var(--accent);}
+.agent-node[data-status="running"] .iris{fill:var(--accent); animation:blink 1.4s infinite;}
+.agent-node[data-status="awaiting"] .eye .lid{stroke:var(--low);}
+.agent-node[data-status="awaiting"] .iris{fill:var(--low); animation:pulse 1.2s infinite;}
+.agent-node[data-status="done"] .eye .lid{stroke:var(--ok);}
+.agent-node[data-status="done"] .iris{fill:var(--ok);}
+.agent-node[data-status="failed"] .eye .lid{stroke:var(--err);}
+.agent-node[data-status="failed"] .iris{fill:var(--err);}
+.agent-node .label{font-size:10.5px; text-align:center; color:var(--muted); line-height:1.25; letter-spacing:0.01em;}
+.agent-node[data-status="running"] .label,
+.agent-node[data-status="awaiting"] .label{color:var(--text);}
+.agent-node .ms{font-size:9px; color:var(--muted-2); font-family:var(--mono);}
+
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0.35;}}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.5;}}
+
+.agent-detail{
+  background:var(--panel-2); border:1px solid var(--border); border-radius:8px;
+  padding:14px 16px; margin-top:4px; font-size:12.5px;
+}
+.agent-detail .ad-title{font-weight:700; color:var(--text); margin-bottom:4px; display:flex; align-items:center; gap:8px;}
+.agent-detail .ad-desc{color:var(--muted); margin-bottom:10px;}
+.ad-events{display:flex; flex-direction:column; gap:4px; margin-bottom:10px;}
+.ad-event-row{
+  display:flex; gap:10px; font-family:var(--mono); font-size:11px; color:var(--muted);
+  border-bottom:1px dashed var(--border-soft); padding-bottom:4px;
+}
+.ad-event-row .ev{color:var(--text); min-width:110px;}
+.ad-findings-title{font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted-2); margin:8px 0 6px;}
+
+/* ---------- gate panel ---------- */
+.gate-panel{
+  margin-top:14px; border:1px solid rgba(79,166,232,0.4); background:rgba(79,166,232,0.06);
+  border-radius:8px; padding:16px;
+}
+.gate-panel h3{margin:0 0 4px 0; font-size:13px; color:var(--low); display:flex; align-items:center; gap:8px;}
+.gate-panel p{margin:0 0 12px 0; color:var(--muted); font-size:12px;}
+.gate-mismatch{
+  background:rgba(240,85,90,0.08); border:1px solid rgba(240,85,90,0.35); color:var(--crit);
+  padding:8px 12px; border-radius:6px; font-size:12px; margin-bottom:12px; display:none;
+}
+.gate-controls{display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;}
+.gate-controls .field{min-width:160px;}
+
+/* ---------- console ---------- */
+details.console{margin-top:14px;}
+details.console summary{
+  cursor:pointer; font-size:11px; color:var(--muted); text-transform:uppercase;
+  letter-spacing:0.06em; padding:6px 0; list-style:none; display:flex; align-items:center; gap:6px;
+}
+details.console summary::-webkit-details-marker{display:none;}
+details.console summary::before{content:"▸"; display:inline-block; transition:transform .15s;}
+details.console[open] summary::before{transform:rotate(90deg);}
+#console-log{
+  background:#07080B; border:1px solid var(--border-soft); border-radius:6px; padding:10px 12px;
+  font-family:var(--mono); font-size:11px; color:var(--muted); max-height:220px; overflow-y:auto;
+  white-space:pre-wrap; word-break:break-word;
+}
+#console-log .cl-line{padding:1px 0;}
+#console-log .cl-time{color:var(--muted-2); margin-right:8px;}
+
+/* ---------- findings table ---------- */
+table.findings{width:100%; border-collapse:collapse; font-size:12px;}
+table.findings th{
+  text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted-2);
+  border-bottom:1px solid var(--border); padding:6px 8px;
+}
+table.findings td{padding:8px; border-bottom:1px solid var(--border-soft); vertical-align:top;}
+table.findings tr:hover td{background:rgba(255,255,255,0.02);}
+.sev-badge{
+  display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:700;
+  text-transform:uppercase; letter-spacing:0.04em;
+}
+.sev-critical{background:rgba(240,85,90,0.15); color:var(--crit);}
+.sev-high{background:rgba(249,122,61,0.15); color:var(--high);}
+.sev-medium{background:rgba(234,193,58,0.15); color:var(--med);}
+.sev-low{background:rgba(79,166,232,0.15); color:var(--low);}
+.sev-info{background:rgba(107,114,128,0.15); color:var(--info);}
+.loc{font-family:var(--mono); font-size:11px; color:var(--muted);}
+.empty-state{color:var(--muted-2); font-size:12px; padding:20px 4px; text-align:center;}
+
+/* ---------- report ---------- */
+.report-content{font-size:13px; color:var(--text); max-height:520px; overflow-y:auto; padding-right:4px;}
+.report-content h1{font-size:18px; border-bottom:1px solid var(--border); padding-bottom:8px;}
+.report-content h2{font-size:15px; margin-top:20px; color:var(--accent);}
+.report-content h3{font-size:13px; margin-top:16px;}
+.report-content code{background:var(--panel-2); padding:1px 5px; border-radius:4px; font-size:11.5px;}
+.report-content pre{background:#07080B; border:1px solid var(--border-soft); padding:10px; border-radius:6px; overflow-x:auto;}
+.report-content li{margin-bottom:4px;}
+.report-actions{display:flex; gap:8px; margin-bottom:12px;}
+
+/* ---------- metrics ---------- */
+#metrics-pre{
+  background:#07080B; border:1px solid var(--border-soft); border-radius:6px; padding:12px;
+  font-family:var(--mono); font-size:11px; color:var(--muted); max-height:220px; overflow-y:auto;
+  white-space:pre-wrap;
+}
+
+/* ---------- toast ---------- */
+#toast-stack{position:fixed; bottom:18px; right:18px; display:flex; flex-direction:column; gap:8px; z-index:100;}
+.toast{
+  background:var(--panel); border:1px solid var(--border); border-left:3px solid var(--muted-2);
+  padding:10px 14px; border-radius:6px; font-size:12px; max-width:340px; box-shadow:0 8px 24px rgba(0,0,0,0.4);
+  animation:toast-in .2s ease-out;
+}
+.toast.success{border-left-color:var(--ok);}
+.toast.error{border-left-color:var(--err);}
+.toast.info{border-left-color:var(--low);}
+@keyframes toast-in{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+
+.footnote{color:var(--muted-2); font-size:11px; margin-top:10px; line-height:1.6;}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 30 30">
+      <circle cx="15" cy="15" r="13" fill="none" stroke="#E8B339" stroke-width="2"/>
+      <circle cx="15" cy="15" r="5.5" fill="#E8B339"/>
+      <circle cx="15" cy="15" r="2" fill="#0A0C10"/>
+    </svg>
+    <div class="brand-text">
+      <h1>Argus</h1>
+      <span class="tagline">multi-agent code review console</span>
+    </div>
+  </div>
+  <div class="config-bar">
+    <div class="config-field">
+      <label>API base URL</label>
+      <input id="cfg-base" type="text" value="http://localhost:8000" spellcheck="false">
+    </div>
+    <div class="config-field">
+      <label>x-api-key</label>
+      <input id="cfg-key" type="text" value="dev-secret-key" spellcheck="false">
+    </div>
+    <div class="health-pill">
+      <span class="dot checking" id="health-dot"></span>
+      <span id="health-label">checking…</span>
+    </div>
+  </div>
+</header>
+
+<main class="layout">
+
+  <!-- Submit -->
+  <section class="panel">
+    <h2>Submit a review</h2>
+    <div class="field-row">
+      <div class="field">
+        <label>Repo</label>
+        <input id="in-repo" type="text" placeholder="demo/repo" value="demo/repo">
+      </div>
+      <div class="field" style="flex:0 0 120px;">
+        <label>PR number</label>
+        <input id="in-pr" type="number" placeholder="1" value="1">
+      </div>
+    </div>
+    <div class="fixture-row">
+      <button class="btn small" data-fixture="sample">Load sample.patch</button>
+      <button class="btn small" data-fixture="critical">Load critical_bugs.patch</button>
+      <button class="btn small" data-fixture="high">Load high_bugs.patch</button>
+      <button class="btn small ghost" id="btn-clear-diff">Clear</button>
+    </div>
+    <div class="field">
+      <label>Diff</label>
+      <textarea id="in-diff" placeholder="Paste a unified diff, or load a fixture above…"></textarea>
+    </div>
+    <div style="margin-top:12px; display:flex; align-items:center; gap:10px;">
+      <button class="btn primary" id="btn-submit">Submit for review</button>
+      <span class="hint" style="margin:0;">Runs the full graph and starts watching it live below.</span>
+    </div>
+    <div class="error-slot" id="submit-error"></div>
+  </section>
+
+  <!-- Tracker -->
+  <section class="panel">
+    <h2>Track a review</h2>
+    <div class="attach-row">
+      <input id="in-attach-id" type="text" placeholder="Paste an existing review_id…" spellcheck="false">
+      <button class="btn" id="btn-attach">Attach</button>
+    </div>
+    <p class="hint">This console keeps no local storage — reviews you submit or attach to in this
+      tab appear below, but reset if you reload the page. Good for the restart-survivability test
+      (DEMO.md step 11): submit a review, copy its ID, restart <code>argus serve</code>, then
+      paste the ID back in here.</p>
+    <div class="recent-list" id="recent-list"></div>
+  </section>
+
+  <!-- Pipeline -->
+  <section class="panel span2 pipeline-panel" id="pipeline-panel" style="display:none;">
+    <h2>Live pipeline</h2>
+    <div class="pipeline-topline">
+      <div class="rid-block">
+        <span class="rid mono" id="pt-rid">—</span>
+        <span class="badge unknown" id="pt-status">unknown</span>
+        <button class="btn small ghost" id="btn-copy-id">Copy ID</button>
+        <button class="btn small ghost" id="btn-refresh-status">Refresh</button>
+      </div>
+      <div class="stream-state">
+        <span class="dot" id="stream-dot"></span>
+        <span id="stream-label">idle</span>
+      </div>
+    </div>
+
+    <div class="pipeline-track" id="pipeline-track"></div>
+    <div class="agent-detail" id="agent-detail">
+      <div class="ad-title">Select an agent</div>
+      <div class="ad-desc">Click any eye above to see its lifecycle events and the findings it produced.</div>
+    </div>
+
+    <div class="gate-panel" id="gate-panel" style="display:none;">
+      <h3>⏸ Awaiting human decision</h3>
+      <p id="gate-panel-desc">The graph is paused at a human-in-the-loop gate.</p>
+      <div class="gate-mismatch" id="gate-mismatch"></div>
+      <div class="gate-controls">
+        <div class="field">
+          <label>Gate</label>
+          <select id="gate-select">
+            <option value="gate_critical_triage">gate_critical_triage</option>
+            <option value="gate_final_approval">gate_final_approval</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Action</label>
+          <select id="gate-action">
+            <option value="confirm">confirm</option>
+            <option value="approve">approve</option>
+            <option value="reject">reject</option>
+            <option value="edited">edited</option>
+          </select>
+        </div>
+        <div class="field" style="flex:2; min-width:220px;">
+          <label>Comment (optional)</label>
+          <input id="gate-comment" type="text" placeholder="Reviewer note…">
+        </div>
+        <button class="btn primary" id="btn-resume">Resume</button>
+      </div>
+    </div>
+
+    <details class="console">
+      <summary>Raw event log</summary>
+      <div id="console-log"></div>
+    </details>
+  </section>
+
+  <!-- Findings -->
+  <section class="panel span2" id="findings-panel" style="display:none;">
+    <h2>Findings <span class="count-chip" id="findings-count">0</span></h2>
+    <div id="findings-table-wrap">
+      <div class="empty-state">No findings yet.</div>
+    </div>
+  </section>
+
+  <!-- Report -->
+  <section class="panel span2" id="report-panel" style="display:none;">
+    <h2>Final report</h2>
+    <div class="report-actions">
+      <button class="btn small" id="btn-fetch-report">Fetch report</button>
+      <button class="btn small ghost" id="btn-download-report" style="display:none;">Download .md</button>
+      <button class="btn small ghost" id="btn-toggle-raw" style="display:none;">View raw markdown</button>
+    </div>
+    <div class="report-content" id="report-content">
+      <div class="empty-state">No report yet — this fills in once the review reaches <code>published</code>.</div>
+    </div>
+  </section>
+
+  <!-- Metrics -->
+  <section class="panel span2">
+    <details>
+      <summary style="cursor:pointer; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em;">
+        Metrics (Prometheus scrape)
+      </summary>
+      <div style="margin-top:12px;">
+        <button class="btn small" id="btn-metrics">Refresh metrics</button>
+        <div id="metrics-pre" style="margin-top:10px;">Click refresh to fetch /metrics.</div>
+      </div>
+    </details>
+  </section>
+
+</main>
+
+<div id="toast-stack"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

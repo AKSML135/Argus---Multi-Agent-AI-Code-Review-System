@@ -19,6 +19,7 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from argus.api.routers import approvals, reviews, stream
@@ -45,6 +46,18 @@ app = FastAPI(
     version="0.1.0",
     description="Multi-agent code review with HITL gates and SSE streaming.",
     lifespan=lifespan,
+)
+
+# --- CORS ---
+# The bundled static frontend (served from a different origin/port, or opened
+# as a local file) needs this to call the API from the browser. Dev-only,
+# wide-open origin list — tighten before deploying anywhere real.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- Routers ---
