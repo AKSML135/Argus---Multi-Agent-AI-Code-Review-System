@@ -367,7 +367,7 @@ def serve(
     import uvicorn
     configure_logging()
     uvicorn.run(
-        "argus.api.app:app",
+        "argus.api.main:app",
         host=host,
         port=port,
         reload=reload,

@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from argus.api.deps import verify_api_key
+from argus.api.event_bus import get_broadcaster
 from argus.persistence.db import get_session
 from argus.persistence.models import Review
 
@@ -48,11 +49,17 @@ _NODE_TO_AGENT: dict[str, str] = {
 async def _sse_event_generator(
     review_id: str, request: Request
 ) -> AsyncIterator[str]:
-    """Stream graph events as SSE for a given review_id."""
-    from argus.graph.graph import compile_graph
+    """Relay graph progress events as SSE for a given review_id.
 
-    graph = compile_graph(router=None)
-    config = {"configurable": {"thread_id": review_id}}
+    IMPORTANT: this generator must never call graph.astream()/astream_events()
+    itself. The graph for a given thread_id is driven by exactly one
+    coroutine (`_run_review` in routers/reviews.py, also used for resumes in
+    routers/approvals.py). This generator only subscribes to the events that
+    coroutine publishes via `argus.api.event_bus`. A second independent
+    invocation of the same thread_id races the background run and corrupts
+    the AsyncSqliteSaver checkpoint — that used to be exactly what this
+    function did, and was the source of the stream endpoint errors.
+    """
     start_ms = int(time.time() * 1000)
 
     def _build_sse(event_name: str, data: dict) -> str:
@@ -65,53 +72,22 @@ async def _sse_event_generator(
         {"review_id": review_id, "event": "connected", "agent": None, "elapsed_ms": 0},
     )
 
-    try:
-        # Replay existing state first (review may already be progressing)
-        graph.get_state(config)
+    broadcaster = get_broadcaster(review_id)
+    queue = broadcaster.subscribe()
 
-        async for raw_event in graph.astream_events(
-            None,  # no new input; replay/stream existing run
-            config=config,
-            version="v2",
-        ):
+    try:
+        while True:
             if await request.is_disconnected():
                 break
 
-            event_type = raw_event.get("event", "")
-            node_name = raw_event.get("name", "")
-            elapsed_ms = int(time.time() * 1000) - start_ms
+            event = await queue.get()
+            if event is None:  # sentinel: run finished (interrupt or completion)
+                break
 
-            agent = _NODE_TO_AGENT.get(node_name, node_name or None)
-            data_payload = raw_event.get("data", {})
+            node_name = event.get("agent") or ""
+            event["agent"] = _NODE_TO_AGENT.get(node_name, node_name or None)
+            yield _build_sse(event["event"], event)
 
-            # Only forward meaningful lifecycle events
-            if event_type in ("on_chain_start", "on_chain_end", "on_chain_stream"):
-                sse_data = {
-                    "review_id": review_id,
-                    "event": event_type,
-                    "agent": agent,
-                    "elapsed_ms": elapsed_ms,
-                    "data": {
-                        k: v
-                        for k, v in (data_payload if isinstance(data_payload, dict) else {}).items()
-                        if k not in ("input", "output")  # skip full state blobs
-                    },
-                }
-                yield _build_sse(event_type, sse_data)
-
-            elif event_type == "on_custom_event":
-                # Custom events emitted by nodes (e.g. agent progress)
-                sse_data = {
-                    "review_id": review_id,
-                    "event": node_name,
-                    "agent": agent,
-                    "elapsed_ms": elapsed_ms,
-                    "data": data_payload if isinstance(data_payload, dict) else {},
-                }
-                yield _build_sse("agent_event", sse_data)
-
-    except StopAsyncIteration:
-        pass
     except Exception as exc:
         log.warning("stream.error", review_id=review_id, error=str(exc))
         yield _build_sse(
@@ -119,7 +95,7 @@ async def _sse_event_generator(
             {"review_id": review_id, "event": "error", "agent": None, "error": str(exc), "elapsed_ms": 0},
         )
     finally:
-        # Send terminal event
+        broadcaster.unsubscribe(queue)
         elapsed_ms = int(time.time() * 1000) - start_ms
         yield _build_sse(
             "done",

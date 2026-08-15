@@ -84,6 +84,7 @@ async def test_aggregator_no_router_deduplicates():
         make_finding(severity="low", line_start=20),
     ]
     agg = await agent.run(findings, "rev-1")
+    print(agg)
     assert isinstance(agg, AggregatedFindings)
     assert len(agg.findings) == 2  # merged + separate
 
@@ -96,6 +97,7 @@ async def test_aggregator_computes_max_severity():
         make_finding(severity="critical", line_start=99),
     ]
     agg = await agent.run(findings, "rev-1")
+    print(agg)
     assert agg.max_severity == "critical"
 
 

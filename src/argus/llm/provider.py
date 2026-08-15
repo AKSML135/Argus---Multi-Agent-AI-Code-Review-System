@@ -92,7 +92,7 @@ class GroqProvider(LLMProvider):
     """Groq provider using the official SDK."""
 
     name = "groq"
-    DEFAULT_MODEL = "llama3-8b-8192"
+    DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
     def __init__(self, api_key: str, model: str | None = None):
         try:
@@ -118,7 +118,7 @@ class GeminiProvider(LLMProvider):
     """Gemini provider using the google-generativeai SDK."""
 
     name = "gemini"
-    DEFAULT_MODEL = "gemini-1.5-flash"
+    DEFAULT_MODEL = "gemini-2.5-flash"
 
     def __init__(self, api_key: str, model: str | None = None):
         try:

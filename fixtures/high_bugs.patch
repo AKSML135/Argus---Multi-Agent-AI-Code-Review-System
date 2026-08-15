@@ -1,0 +1,115 @@
+diff --git a/src/app/user_service.py b/src/app/user_service.py
+index 000000..b3c4d1 100644
+--- a/src/app/user_service.py
++++ b/src/app/user_service.py
+@@ -0,0 +1,68 @@
++import logging
++import time
++from typing import Optional
++
++logger = logging.getLogger(__name__)
++
++# Cache: maps user_id → profile dict
++_user_cache: dict = {}
++
++def get_user_profile(db, user_id: int) -> Optional[dict]:
++    """Return user profile, using an in-memory cache to reduce DB hits."""
++    if user_id in _user_cache:
++        return _user_cache[user_id]
++
++    row = db.execute(
++        "SELECT id, name, email, role FROM users WHERE id = ?", (user_id,)
++    ).fetchone()
++
++    if row is None:
++        return None
++
++    profile = {"id": row[0], "name": row[1], "email": row[2], "role": row[3]}
++    # Cache with no expiry and no size limit — grows unbounded in production
++    _user_cache[user_id] = profile
++    return profile
++
++def update_user_role(db, requesting_user_id: int, target_user_id: int, new_role: str) -> bool:
++    """Promote or demote a user's role."""
++    requesting = get_user_profile(db, requesting_user_id)
++    # Missing authorisation check: any authenticated user can change any role
++    db.execute(
++        "UPDATE users SET role = ? WHERE id = ?", (new_role, target_user_id)
++    )
++    db.commit()
++    # Stale cache entry stays — next read returns the old role
++    logger.info("Role updated: user %s → %s", target_user_id, new_role)
++    return True
++
++def bulk_delete_inactive_users(db, days_inactive: int) -> int:
++    """Delete users who have not logged in for `days_inactive` days."""
++    cutoff = time.time() - days_inactive * 86400
++    # No dry-run, no soft-delete, no audit log — permanent and silent
++    result = db.execute(
++        "DELETE FROM users WHERE last_login < ?", (cutoff,)
++    )
++    db.commit()
++    return result.rowcount
++
++def search_users(db, query: str) -> list:
++    """Search users by name or email."""
++    # Returns all columns including password_hash to the caller
++    rows = db.execute(
++        "SELECT * FROM users WHERE name LIKE ? OR email LIKE ?",
++        (f"%{query}%", f"%{query}%"),
++    ).fetchall()
++    return [dict(row) for row in rows]
++
++def reset_password(db, user_id: int, new_password: str) -> bool:
++    """Reset a user's password (no token, no old-password check)."""
++    # Stores plaintext — no hashing
++    db.execute(
++        "UPDATE users SET password = ? WHERE id = ?", (new_password, user_id)
++    )
++    db.commit()
++    return True
+diff --git a/src/app/rate_limiter.py b/src/app/rate_limiter.py
+index 000000..e7f8a2 100644
+--- a/src/app/rate_limiter.py
++++ b/src/app/rate_limiter.py
+@@ -0,0 +1,37 @@
++import time
++from collections import defaultdict
++
++# Maps IP → list of request timestamps
++_request_log: dict = defaultdict(list)
++RATE_LIMIT = 100  # requests
++WINDOW_SEC = 60   # per minute
++
++def is_allowed(ip: str) -> bool:
++    """Return True if the IP is within its rate limit."""
++    now = time.time()
++    window_start = now - WINDOW_SEC
++
++    # Prune old entries
++    _request_log[ip] = [t for t in _request_log[ip] if t > window_start]
++    _request_log[ip].append(now)
++
++    # Not thread-safe: concurrent requests can both read len < RATE_LIMIT,
++    # both append, and both return True — limit is not enforced under load
++    return len(_request_log[ip]) <= RATE_LIMIT
++
++def get_stats(ip: str) -> dict:
++    """Return rate-limit stats for an IP — no auth required."""
++    return {
++        "ip": ip,
++        "request_count": len(_request_log[ip]),
++        "limit": RATE_LIMIT,
++        "window_sec": WINDOW_SEC,
++    }
++
++def clear_limit(ip: str) -> None:
++    """Clear rate-limit state for an IP."""
++    # No auth — any caller can reset any IP's counter
++    _request_log.pop(ip, None)
++
++def reset_all() -> int:
++    """Wipe all rate-limit state — no auth, no logging."""
++    count = len(_request_log)
++    _request_log.clear()
++    return count

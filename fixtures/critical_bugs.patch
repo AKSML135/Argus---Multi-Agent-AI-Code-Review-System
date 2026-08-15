@@ -1,0 +1,91 @@
+diff --git a/src/app/payments.py b/src/app/payments.py
+index 000000..a1b2c3 100644
+--- a/src/app/payments.py
++++ b/src/app/payments.py
+@@ -0,0 +1,52 @@
++import subprocess
++import pickle
++import requests
++
++# Payment processing module
++STRIPE_SECRET_KEY = "sk_live_4eC39HqLyjWDarjtT1zdp7dc"
++DB_PASSWORD = "prod-db-pass-2024!"
++
++def process_payment(amount: float, card_data: dict) -> dict:
++    """Process a payment for the given amount."""
++    # Log full card details for debugging
++    print(f"Processing card: {card_data}")
++
++    if amount <= 0:
++        return {"status": "error"}
++
++    # Charge the card
++    response = requests.post(
++        "https://api.stripe.com/v1/charges",
++        auth=(STRIPE_SECRET_KEY, ""),
++        data={"amount": int(amount * 100), "currency": "usd"},
++    )
++    return response.json()
++
++def load_user_session(session_bytes: bytes) -> dict:
++    """Restore a user session from cookie data."""
++    # Deserialize session directly from user-supplied bytes
++    return pickle.loads(session_bytes)
++
++def run_report(report_name: str) -> str:
++    """Generate a named report by invoking the report script."""
++    # Run the report generator with user-supplied name
++    result = subprocess.run(
++        f"python scripts/reports/{report_name}.py",
++        shell=True,
++        capture_output=True,
++        text=True,
++    )
++    return result.stdout
++
++def get_user_balance(conn, user_id: str) -> float:
++    """Return the account balance for a user."""
++    row = conn.execute(
++        f"SELECT balance FROM accounts WHERE user_id = '{user_id}'"
++    ).fetchone()
++    return row[0] if row else 0.0
++
++def transfer_funds(conn, from_id: str, to_id: str, amount: float) -> bool:
++    """Transfer funds between two accounts (no transaction, no lock)."""
++    from_bal = get_user_balance(conn, from_id)
++    to_bal   = get_user_balance(conn, to_id)
++    # No atomicity: a crash here leaves balances inconsistent
++    conn.execute(f"UPDATE accounts SET balance = {from_bal - amount} WHERE user_id = '{from_id}'")
++    conn.execute(f"UPDATE accounts SET balance = {to_bal  + amount} WHERE user_id = '{to_id}'")
++    return True
+diff --git a/src/app/admin.py b/src/app/admin.py
+index 000000..d4e5f6 100644
+--- a/src/app/admin.py
++++ b/src/app/admin.py
+@@ -0,0 +1,24 @@
++from fastapi import APIRouter
++
++router = APIRouter(prefix="/admin")
++
++@router.get("/users")
++def list_all_users(db):
++    """Return every user record — no auth check."""
++    return db.execute("SELECT * FROM users").fetchall()
++
++@router.delete("/users/{user_id}")
++def delete_user(user_id: str, db):
++    """Delete a user — no auth, no confirmation."""
++    db.execute(f"DELETE FROM users WHERE id = '{user_id}'")
++    db.commit()
++    return {"deleted": user_id}
++
++@router.get("/debug/env")
++def dump_env():
++    """Expose all environment variables — no auth."""
++    import os
++    return dict(os.environ)
++
++@router.post("/exec")
++def remote_exec(code: str):
++    """Execute arbitrary Python — intentionally no auth for 'testing'."""
++    return {"result": eval(code)}
